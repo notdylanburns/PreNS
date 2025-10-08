@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <script src="main.js"></script>
+    <link rel="stylesheet" href="index.css">
+</head>
+
+<body>
+    <div id="input">
+        <form action="javascript:submit();">
+            <input type="text" id="hostname_input" name="hostname" placeholder="example.com" minlength="1"
+                pattern="(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])"
+                required />
+            <input type="number" id="ttl_input" name="ttl" value="900" min="60" required />
+            <input type="submit" value="Submit" />
+        </form>
+    </div>
+
+    <hr />
+
+    <div id="view">
+        <fieldset>
+            <legend>View:</legend>
+
+            <div>
+                <input type="radio" name="view" id="radio_list" value="list" checked onchange="change_view(this)" />
+                <label for="radio_list">List</label>
+            </div>
+
+            <div>
+                <input type="radio" name="view" id="radio_table" value="table" onchange="change_view(this)" />
+                <label for="radio_table">Table</label>
+            </div>
+        </fieldset>
+
+        <div id="view_loading" class="view-container">loading...</div>
+        <div id="view_list" class="view-container hidden">
+            <ul id="data_list">
+            </ul>
+        </div>
+        <div id="view_table" class="view-container hidden">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Hostname</th>
+                        <th>TTL</th>
+                        <th>Last Resolved At</th>
+                        <th>Error</th>
+                        <th />
+                    </tr>
+                </thead>
+                <tbody id="data_table">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+
+</html>

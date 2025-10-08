@@ -1,0 +1,131 @@
+#!/usr/bin/env python
+
+import logging
+import socket
+import sqlite3
+import time
+from sqlite3 import Connection
+from threading import Thread
+
+logging.basicConfig(level=logging.INFO)
+
+DATABASE_FILE = "prens.db"
+INTERVAL = 5
+
+
+class Database:
+    path: str
+
+    class Conn:
+        def __init__(self, conn: Connection):
+            self.conn = conn
+
+        def __enter__(self) -> Connection:
+            return self.conn
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            self.conn.commit()
+            self.conn.close()
+
+    def __init__(self, path: str):
+        self.path = path
+
+    def connect(self) -> Conn:
+        return self.Conn(sqlite3.connect(self.path))
+
+
+def get_hostnames_to_resolve(conn: Connection):
+    return conn.execute(
+        """
+            SELECT id, hostname
+            FROM hostname
+            WHERE updated_at IS NULL
+            OR (
+                julianday(CURRENT_TIMESTAMP) - julianday(updated_at)
+            ) * 86400.0 > ttl;
+        """
+    ).fetchall()
+
+
+def write_error_message(db: Database, id: int, message: str):
+    with db.connect() as conn:
+        conn.execute(
+            """
+                UPDATE hostname
+                SET
+                    updated_at = CURRENT_TIMESTAMP,
+                    error_message = ?
+                WHERE id = ?;
+            """,
+            (message[:255], id),
+        )
+
+
+def resolve_and_update(db: Database, id: int, hostname: str):
+    try:
+        try:
+            addresses = set(addr[4][0] for addr in socket.getaddrinfo(hostname, None))
+        except socket.gaierror as e:
+            logging.error(f"failed to resolve '{hostname}': {e}")
+            write_error_message(db, id, str(e))
+            return
+
+        logging.info(f"resolved '{hostname}' to {len(addresses)} addresses")
+
+        with db.connect() as conn:
+            conn.execute(
+                """
+                    UPDATE hostname
+                    SET
+                        updated_at = CURRENT_TIMESTAMP,
+                        resolved_at = CURRENT_TIMESTAMP,
+                        error_message = NULL
+                    WHERE id = ?;
+                """,
+                (id,),
+            )
+    except Exception as e:
+        logging.error(f"failed to process '{hostname}': {e}")
+        write_error_message(db, id, str(e))
+
+
+def resolve_hostnames(db: Database):
+    with db.connect() as conn:
+        hostnames = get_hostnames_to_resolve(conn)
+
+    threads = []
+    for id, hostname in hostnames:
+        threads.append(
+            Thread(
+                target=resolve_and_update,
+                args=(db, id, hostname),
+            )
+        )
+
+    for thread in threads:
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+
+def main():
+    db = Database(DATABASE_FILE)
+
+    while True:
+        start = time.time()
+
+        try:
+            resolve_hostnames(db)
+        except Exception as e:
+            logging.error(e)
+
+        elapsed = time.time() - start
+
+        if elapsed < INTERVAL:
+            time.sleep(INTERVAL - elapsed)
+
+
+if __name__ == "__main__":
+    logging.info("starting prensd...")
+    main()
